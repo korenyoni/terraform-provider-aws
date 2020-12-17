@@ -80,7 +80,7 @@ func resourceAwsBatchComputeEnvironment() *schema.Resource {
 						},
 						"instance_role": {
 							Type:         schema.TypeString,
-							Required:     true,
+							Optional:     true,
 							ForceNew:     true,
 							ValidateFunc: validateArn,
 						},
@@ -229,7 +229,6 @@ func resourceAwsBatchComputeEnvironmentCreate(d *schema.ResourceData, meta inter
 		}
 		computeResource := computeResources[0].(map[string]interface{})
 
-		instanceRole := computeResource["instance_role"].(string)
 		maxvCpus := int64(computeResource["max_vcpus"].(int))
 		minvCpus := int64(computeResource["min_vcpus"].(int))
 		computeResourceType := computeResource["type"].(string)
@@ -250,7 +249,6 @@ func resourceAwsBatchComputeEnvironmentCreate(d *schema.ResourceData, meta inter
 		}
 
 		input.ComputeResources = &batch.ComputeResource{
-			InstanceRole:     aws.String(instanceRole),
 			InstanceTypes:    instanceTypes,
 			MaxvCpus:         aws.Int64(maxvCpus),
 			MinvCpus:         aws.Int64(minvCpus),
@@ -274,7 +272,10 @@ func resourceAwsBatchComputeEnvironmentCreate(d *schema.ResourceData, meta inter
 		if v, ok := computeResource["image_id"]; ok {
 			input.ComputeResources.ImageId = aws.String(v.(string))
 		}
-		if v, ok := computeResource["spot_iam_fleet_role"]; ok {
+		if v, ok := computeResource["instance_role"]; ok && len(v.(string)) > 0 {
+			input.ComputeResources.InstanceRole = aws.String(v.(string))
+		}
+		if v, ok := computeResource["spot_iam_fleet_role"]; ok && len(v.(string)) > 0 {
 			input.ComputeResources.SpotIamFleetRole = aws.String(v.(string))
 		}
 		if v, ok := computeResource["tags"]; ok {
