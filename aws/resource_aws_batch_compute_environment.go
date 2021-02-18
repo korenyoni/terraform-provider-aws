@@ -80,13 +80,13 @@ func resourceAwsBatchComputeEnvironment() *schema.Resource {
 						},
 						"instance_role": {
 							Type:         schema.TypeString,
-							Required:     true,
+							Optional:     true,
 							ForceNew:     true,
 							ValidateFunc: validateArn,
 						},
 						"instance_type": {
 							Type:     schema.TypeSet,
-							Required: true,
+							Optional: true,
 							ForceNew: true,
 							Elem:     &schema.Schema{Type: schema.TypeString},
 						},
@@ -123,7 +123,7 @@ func resourceAwsBatchComputeEnvironment() *schema.Resource {
 						},
 						"min_vcpus": {
 							Type:     schema.TypeInt,
-							Required: true,
+							Optional: true,
 						},
 						"security_group_ids": {
 							Type:     schema.TypeSet,
@@ -148,7 +148,7 @@ func resourceAwsBatchComputeEnvironment() *schema.Resource {
 							Type:         schema.TypeString,
 							Required:     true,
 							ForceNew:     true,
-							ValidateFunc: validation.StringInSlice([]string{batch.CRTypeEc2, batch.CRTypeSpot}, true),
+							ValidateFunc: validation.StringInSlice([]string{batch.CRTypeEc2, batch.CRTypeSpot, batch.CRTypeFargate, batch.CRTypeFargateSpot}, true),
 						},
 					},
 				},
@@ -229,9 +229,7 @@ func resourceAwsBatchComputeEnvironmentCreate(d *schema.ResourceData, meta inter
 		}
 		computeResource := computeResources[0].(map[string]interface{})
 
-		instanceRole := computeResource["instance_role"].(string)
 		maxvCpus := int64(computeResource["max_vcpus"].(int))
-		minvCpus := int64(computeResource["min_vcpus"].(int))
 		computeResourceType := computeResource["type"].(string)
 
 		var instanceTypes []*string
@@ -250,31 +248,37 @@ func resourceAwsBatchComputeEnvironmentCreate(d *schema.ResourceData, meta inter
 		}
 
 		input.ComputeResources = &batch.ComputeResource{
-			InstanceRole:     aws.String(instanceRole),
 			InstanceTypes:    instanceTypes,
 			MaxvCpus:         aws.Int64(maxvCpus),
-			MinvCpus:         aws.Int64(minvCpus),
 			SecurityGroupIds: securityGroupIds,
 			Subnets:          subnets,
 			Type:             aws.String(computeResourceType),
 		}
 
-		if v, ok := computeResource["allocation_strategy"]; ok {
+		if v, ok := computeResource["allocation_strategy"]; ok && len(v.(string)) > 0 {
 			input.ComputeResources.AllocationStrategy = aws.String(v.(string))
 		}
-		if v, ok := computeResource["bid_percentage"]; ok {
+		if v, ok := computeResource["bid_percentage"]; ok && v.(int) > 0 {
 			input.ComputeResources.BidPercentage = aws.Int64(int64(v.(int)))
 		}
 		if v, ok := computeResource["desired_vcpus"]; ok && v.(int) > 0 {
 			input.ComputeResources.DesiredvCpus = aws.Int64(int64(v.(int)))
 		}
-		if v, ok := computeResource["ec2_key_pair"]; ok {
+		if v, ok := computeResource["ec2_key_pair"]; ok && len(v.(string)) > 0 {
 			input.ComputeResources.Ec2KeyPair = aws.String(v.(string))
 		}
-		if v, ok := computeResource["image_id"]; ok {
+		if v, ok := computeResource["image_id"]; ok && len(v.(string)) > 0 {
 			input.ComputeResources.ImageId = aws.String(v.(string))
 		}
-		if v, ok := computeResource["spot_iam_fleet_role"]; ok {
+		if v, ok := computeResource["instance_role"]; ok && len(v.(string)) > 0 {
+			input.ComputeResources.InstanceRole = aws.String(v.(string))
+		}
+		if v, ok := computeResource["min_vcpus"]; ok && v.(int) > 0 {
+			input.ComputeResources.MinvCpus = aws.Int64(int64(v.(int)))
+		} else if computeResourceType == batch.CRTypeEc2 || computeResourceType == batch.CRTypeSpot {
+			input.ComputeResources.MinvCpus = aws.Int64(0)
+		}
+		if v, ok := computeResource["spot_iam_fleet_role"]; ok && len(v.(string)) > 0 {
 			input.ComputeResources.SpotIamFleetRole = aws.String(v.(string))
 		}
 		if v, ok := computeResource["tags"]; ok {
