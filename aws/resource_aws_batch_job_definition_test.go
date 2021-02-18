@@ -83,6 +83,63 @@ func TestAccAWSBatchJobDefinition_basic(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckBatchJobDefinitionExists(resourceName, &jd),
 					resource.TestCheckResourceAttr(resourceName, "tags.%", "0"),
+					resource.TestCheckResourceAttr(resourceName, "platform_capability.#", "0"),
+				),
+			},
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func TestAccAWSBatchJobDefinition_PlatformCapabilities_EC2(t *testing.T) {
+	var jd batch.JobDefinition
+	rName := acctest.RandomWithPrefix("tf-acc-test")
+	resourceName := "aws_batch_job_definition.test"
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSBatch(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckBatchJobDefinitionDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccBatchJobDefinitionConfigCapabilitiesEC2(rName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckBatchJobDefinitionExists(resourceName, &jd),
+					resource.TestCheckResourceAttr(resourceName, "tags.%", "0"),
+					resource.TestCheckResourceAttr(resourceName, "platform_capability.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "platform_capability.0", "EC2"),
+				),
+			},
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func TestAccAWSBatchJobDefinition_PlatformCapabilities_Fargate(t *testing.T) {
+	var jd batch.JobDefinition
+	rName := acctest.RandomWithPrefix("tf-acc-test")
+	resourceName := "aws_batch_job_definition.test"
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSBatch(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckBatchJobDefinitionDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccBatchJobDefinitionConfigCapabilitiesFargate(rName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckBatchJobDefinitionExists(resourceName, &jd),
+					resource.TestCheckResourceAttr(resourceName, "tags.%", "0"),
+					resource.TestCheckResourceAttr(resourceName, "platform_capability.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "platform_capability.0", "FARGATE"),
 				),
 			},
 			{
@@ -327,11 +384,11 @@ resource "aws_batch_job_definition" "test" {
   }
   container_properties = <<CONTAINER_PROPERTIES
 {
-	"command": ["ls", "-la"],
-	"image": "busybox",
-	"memory": 512,
-	"vcpus": 1,
-	"volumes": [
+    "command": ["ls", "-la"],
+    "image": "busybox",
+    "memory": 512,
+    "vcpus": 1,
+    "volumes": [
       {
         "host": {
           "sourcePath": "/tmp"
@@ -339,16 +396,16 @@ resource "aws_batch_job_definition" "test" {
         "name": "tmp"
       }
     ],
-	"environment": [
-		{"name": "VARNAME", "value": "VARVAL"}
-	],
-	"mountPoints": [
-		{
+    "environment": [
+        {"name": "VARNAME", "value": "VARVAL"}
+    ],
+    "mountPoints": [
+        {
           "sourceVolume": "tmp",
           "containerPath": "/tmp",
           "readOnly": false
         }
-	],
+    ],
     "ulimits": [
       {
         "hardLimit": 1024,
@@ -370,11 +427,11 @@ resource "aws_batch_job_definition" "test" {
   type                 = "container"
   container_properties = <<CONTAINER_PROPERTIES
 {
-	"command": ["ls", "-la"],
-	"image": "busybox",
-	"memory": 1024,
-	"vcpus": 1,
-	"volumes": [
+    "command": ["ls", "-la"],
+    "image": "busybox",
+    "memory": 1024,
+    "vcpus": 1,
+    "volumes": [
       {
         "host": {
           "sourcePath": "/tmp"
@@ -382,16 +439,16 @@ resource "aws_batch_job_definition" "test" {
         "name": "tmp"
       }
     ],
-	"environment": [
-		{"name": "VARNAME", "value": "VARVAL"}
-	],
-	"mountPoints": [
-		{
+    "environment": [
+        {"name": "VARNAME", "value": "VARVAL"}
+    ],
+    "mountPoints": [
+        {
           "sourceVolume": "tmp",
           "containerPath": "/tmp",
           "readOnly": false
         }
-	],
+    ],
     "ulimits": [
       {
         "hardLimit": 1024,
@@ -417,6 +474,75 @@ resource "aws_batch_job_definition" "test" {
   })
   name = %[1]q
   type = "container"
+}
+`, rName)
+}
+
+func testAccBatchJobDefinitionConfigCapabilitiesEC2(rName string) string {
+	return fmt.Sprintf(`
+resource "aws_batch_job_definition" "test" {
+  name = %[1]q
+  type = "container"
+  platform_capability = [
+    "EC2",
+  ]
+
+  container_properties = jsonencode({
+    command = ["echo", "test"]
+    image   = "busybox"
+    memory  = 128
+    vcpus   = 1
+  })
+}
+`, rName)
+}
+
+func testAccBatchJobDefinitionConfigCapabilitiesFargate(rName string) string {
+	return fmt.Sprintf(`
+data "aws_partition" "current" {}
+
+resource "aws_iam_role" "ecs_task_execution_role" {
+  name               = "%[1]s-exec-role"
+  assume_role_policy = data.aws_iam_policy_document.assume_role_policy.json
+}
+
+data "aws_iam_policy_document" "assume_role_policy" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_batch_job_definition" "test" {
+  name = %[1]q
+  type = "container"
+  platform_capability = [
+    "FARGATE",
+  ]
+
+  container_properties = <<CONTAINER_PROPERTIES
+{
+  "command": ["echo", "test"],
+  "image": "busybox",
+  "fargatePlatformConfiguration": {
+    "platformVersion": "LATEST"
+  },
+  "resourceRequirements": [
+    {"type": "VCPU", "value": "0.25"},
+    {"type": "MEMORY", "value": "512"}
+  ],
+  "executionRoleArn": "${aws_iam_role.ecs_task_execution_role.arn}"
+}
+CONTAINER_PROPERTIES
 }
 `, rName)
 }
